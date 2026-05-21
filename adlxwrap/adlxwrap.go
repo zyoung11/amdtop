@@ -3,8 +3,6 @@
 package adlxwrap
 
 /*
-#cgo CFLAGS: -I ${SRCDIR}/../ADLX/SDK/Include -I ${SRCDIR}/../ADLX/SDK/ADLXHelper/Windows/C -I ${SRCDIR}/../ADLX/SDK/Platform/Windows
-
 #include "adlx_bridge.h"
 */
 import "C"

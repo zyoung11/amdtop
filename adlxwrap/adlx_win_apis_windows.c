@@ -3,7 +3,7 @@
 //
 //-------------------------------------------------------------------------------------------------
 //This abstracts Win32 APIs in ADLX ones so we insulate from platform
-#include "../../Include/ADLXDefines.h"
+#include "ADLXDefines.h"
 
 #if defined(_WIN32) // Microsoft compiler
     #include <Windows.h>
