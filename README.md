@@ -4,6 +4,8 @@ AMD GPU monitor for Linux and Windows with a terminal UI.
 
 [中文文档](README_CN.md)
 
+![Example](Example.jpg)
+
 ## Features
 
 - Real-time GPU metrics: utilization, temperature, power draw, VRAM usage

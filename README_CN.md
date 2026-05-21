@@ -4,6 +4,8 @@ AMD GPU 终端监控工具，支持 Linux 和 Windows。
 
 [English Documentation](README.md)
 
+![Example](Example.jpg)
+
 ## 功能
 
 - 实时显示 GPU 核心利用率、温度、功耗、显存占用
