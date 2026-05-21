@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math"
 	"os"
@@ -24,7 +25,6 @@ type GPUData struct {
 	VRAMTotal   uint64
 }
 
-// platform functions — implemented by linux.go / windows.go
 type chartMode int
 
 const (
@@ -49,15 +49,37 @@ func (m chartMode) String() string {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// config
-// ---------------------------------------------------------------------------
+type runMode int
+
+const (
+	modeLocal runMode = iota
+	modeServer
+	modeClient
+)
+
+var (
+	currentRunMode       = modeLocal
+	modeLabel, modeExtra string
+)
+
+type ServerCfg struct {
+	Port int `json:"port"`
+}
+
+type ClientCfg struct {
+	IP   string `json:"ip"`
+	Port int    `json:"port"`
+}
 
 type Config struct {
 	TitleColor   string            `json:"title_color"`
 	GaugeColors  map[string]string `json:"gauges"`
 	ChartColors  map[string]string `json:"charts"`
 	DefaultChart string            `json:"default_chart"`
+	ServerColor  string            `json:"server_color"`
+	ClientColor  string            `json:"client_color"`
+	Server       *ServerCfg        `json:"server,omitempty"`
+	Client       *ClientCfg        `json:"client,omitempty"`
 }
 
 func defaultConfig() *Config {
@@ -76,26 +98,28 @@ func defaultConfig() *Config {
 			"vram":  "#e65100",
 		},
 		DefaultChart: "util",
+		ServerColor:  "#4aa84a",
+		ClientColor:  "#58a6ff",
 	}
 }
 
-var cfg *Config
+var (
+	cfg     *Config
+	cfgPath string
+)
 
 func loadConfig() *Config {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return defaultConfig()
 	}
-	path := filepath.Join(home, ".config", "amdtop", "config.json")
+	cfgPath = filepath.Join(home, ".config", "amdtop", "config.json")
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(cfgPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			def := defaultConfig()
-			if j, err := json.MarshalIndent(def, "", "  "); err == nil {
-				os.MkdirAll(filepath.Dir(path), 0755)
-				os.WriteFile(path, j, 0644)
-			}
+			saveConfig(def)
 			return def
 		}
 		return defaultConfig()
@@ -108,9 +132,12 @@ func loadConfig() *Config {
 	return &c
 }
 
-// ---------------------------------------------------------------------------
-// constants
-// ---------------------------------------------------------------------------
+func saveConfig(c *Config) {
+	if j, err := json.MarshalIndent(c, "", "  "); err == nil {
+		os.MkdirAll(filepath.Dir(cfgPath), 0755)
+		os.WriteFile(cfgPath, j, 0644)
+	}
+}
 
 const (
 	animFPS      = 60
@@ -118,18 +145,10 @@ const (
 	historyLen   = 120
 )
 
-// ---------------------------------------------------------------------------
-// messages
-// ---------------------------------------------------------------------------
-
 type (
 	animTick time.Time
 	dataTick time.Time
 )
-
-// ---------------------------------------------------------------------------
-// model
-// ---------------------------------------------------------------------------
 
 type model struct {
 	spUtil, spTemp, spPower, spVRAM harmonica.Spring
@@ -151,8 +170,8 @@ type model struct {
 	last      time.Time
 	w, h      int
 
-	compact   bool // terminal too short for full layout
-	showGauge bool // compact mode: true = gauges only, false = chart only
+	compact   bool
+	showGauge bool
 }
 
 func newModel() model {
@@ -182,10 +201,6 @@ func newModel() model {
 		w:         80, h: 24,
 	}
 }
-
-// ---------------------------------------------------------------------------
-// bubbletea lifecycle
-// ---------------------------------------------------------------------------
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(m.tickAnim(), m.tickData(), tea.EnterAltScreen)
@@ -225,9 +240,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 
-		// estimate full-layout height; switch to compact if too short
 		estChartH := max(min(m.w-10, 80)*3/8, 3)
-		estFull := 3 + 8 + 1 + (estChartH + 2) + 2 + 2 // ≈ 18 + estChartH
+		estFull := 3 + 8 + 1 + (estChartH + 2) + 2 + 2
 		if m.h < estFull && !m.compact {
 			m.compact = true
 			m.showGauge = true
@@ -243,7 +257,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.tickAnim()
 
 	case dataTick:
-		d, err := collectGPUData()
+		var d *GPUData
+		var err error
+
+		if currentRunMode == modeClient {
+			d, err = fetchMetrics(cfg.Client.IP, cfg.Client.Port)
+		} else {
+			d, err = collectGPUData()
+		}
+
 		if err != nil {
 			m.err = err
 		} else {
@@ -254,6 +276,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tPower = d.Power
 			if d.VRAMTotal > 0 {
 				m.tVRAM = float64(d.VRAMUsed) / float64(d.VRAMTotal) * 100
+			}
+
+			if currentRunMode == modeServer {
+				currentMetrics = metricsJSON{
+					Name:        d.Name,
+					Utilization: d.Utilization,
+					Temperature: d.Temperature,
+					Power:       d.Power,
+					PowerCap:    d.PowerCap,
+					VRAMUsed:    d.VRAMUsed,
+					VRAMTotal:   d.VRAMTotal,
+				}
 			}
 
 			m.histUtil = append(m.histUtil, float64(d.Utilization))
@@ -281,10 +315,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ---------------------------------------------------------------------------
-// styles (initialised in main via initStyles)
-// ---------------------------------------------------------------------------
-
 var (
 	colBg      lipgloss.Color
 	colSurface lipgloss.Color
@@ -292,16 +322,18 @@ var (
 	colText    lipgloss.Color
 	colMuted   lipgloss.Color
 	colBarOff  lipgloss.Color
+	colAccent  lipgloss.Color
 	colGreen   lipgloss.Color
 	colYellow  lipgloss.Color
 	colRed     lipgloss.Color
 
-	sTitle lipgloss.Style
-	sSub   lipgloss.Style
-	sLabel lipgloss.Style
-	sValue lipgloss.Style
-	sHelp  lipgloss.Style
-	sErr   lipgloss.Style
+	sTitle   lipgloss.Style
+	sSub     lipgloss.Style
+	sLabel   lipgloss.Style
+	sValue   lipgloss.Style
+	sHelp    lipgloss.Style
+	sErr     lipgloss.Style
+	sModeTag lipgloss.Style
 )
 
 func initStyles(c *Config) {
@@ -311,6 +343,7 @@ func initStyles(c *Config) {
 	colText = "#e6edf3"
 	colMuted = "#7d8590"
 	colBarOff = "#21262d"
+	colAccent = "#e65100"
 	colGreen = "#4aa84a"
 	colYellow = "#ad893d"
 	colRed = "#c06868"
@@ -323,11 +356,8 @@ func initStyles(c *Config) {
 	sValue = lipgloss.NewStyle().Bold(true).Foreground(colText)
 	sHelp = lipgloss.NewStyle().Foreground(colMuted)
 	sErr = lipgloss.NewStyle().Foreground(colRed)
+	sModeTag = lipgloss.NewStyle().Foreground(colMuted).Bold(true)
 }
-
-// ---------------------------------------------------------------------------
-// rendering helpers
-// ---------------------------------------------------------------------------
 
 func barColor(pct float64) lipgloss.Color {
 	switch {
@@ -362,9 +392,6 @@ func fmtBytes(b uint64) string {
 	}
 }
 
-// miniChart renders a mini bar chart using half-block characters (▀▄█)
-// for 2-pixel vertical resolution per text row. Caller should ensure
-// width:height ≈ 4:3 for a proper rectangular look.
 func miniChart(data []float64, width, height int, maxVal float64) string {
 	if len(data) == 0 || width <= 0 || height <= 0 || maxVal <= 0 {
 		return ""
@@ -421,17 +448,13 @@ func miniChart(data []float64, width, height int, maxVal float64) string {
 	return sb.String()
 }
 
-// ---------------------------------------------------------------------------
-// view
-// ---------------------------------------------------------------------------
-
 func (m model) View() string {
 	if m.err != nil && m.data == nil {
 		return "\n  " + sErr.Render(fmt.Sprintf("Error: %v", m.err)) +
 			"\n  " + sHelp.Render("Press q to quit.") + "\n"
 	}
 
-	barW := m.w - 7 - 4 - 16 // 7 label + 4 spaces + 16 value
+	barW := m.w - 7 - 4 - 16
 	barW = max(10, min(60, barW))
 
 	name := "AMD GPU"
@@ -444,6 +467,14 @@ func (m model) View() string {
 	b.WriteString(sTitle.Render("  ⬡ AMD GPU Monitor"))
 	b.WriteString("  ")
 	b.WriteString(sSub.Render(name))
+	if modeExtra != "" {
+		b.WriteString("  ")
+		modeColor := lipgloss.Color(cfg.ServerColor)
+		if currentRunMode == modeClient {
+			modeColor = lipgloss.Color(cfg.ClientColor)
+		}
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(modeColor).Render(modeExtra))
+	}
 	b.WriteString("\n\n\n")
 
 	valStyle := lipgloss.NewStyle().Bold(true).Foreground(colText).Width(16)
@@ -485,79 +516,79 @@ func (m model) View() string {
 	}
 
 	if !m.compact || !m.showGauge {
-	var (
-		histData  []float64
-		histLabel string
-		histColor lipgloss.Color
-	)
-	switch m.chartMode {
-	case modeUtil:
-		histData = m.histUtil
-		histLabel = " UTIL "
-		histColor = lipgloss.Color(cfg.ChartColors["util"])
-	case modeTemp:
-		histData = m.histTemp
-		histLabel = " TEMP "
-		histColor = lipgloss.Color(cfg.ChartColors["temp"])
-	case modePower:
-		histData = m.histPower
-		histLabel = " POWER "
-		histColor = lipgloss.Color(cfg.ChartColors["power"])
-	case modeVRAM:
-		histData = m.histVRAM
-		histLabel = " VRAM "
-		histColor = lipgloss.Color(cfg.ChartColors["vram"])
-	}
-
-	maxW := min(m.w-10, 80)
-	availH := m.h - 14
-	availH = max(availH, 4)
-
-	chartW := maxW
-	chartH := chartW * 3 / 8
-	chartH = max(chartH, 3)
-	if chartH > availH {
-		chartH = availH
-		chartW = chartH * 8 / 3
-	}
-
-	chartData := histData
-	if len(chartData) < 3 {
-		chartData = make([]float64, chartW)
-	}
-
-	chart := miniChart(chartData, chartW, chartH, 100)
-	if chart != "" {
-		muted := lipgloss.NewStyle().Foreground(colMuted)
-		accent := lipgloss.NewStyle().Foreground(histColor)
-
-		chartLines := strings.Split(chart, "\n")
-
-		var top string
-		if chartW > len(histLabel) {
-			totalDash := chartW - len(histLabel)
-			leftDash := totalDash / 2
-			rightDash := totalDash - leftDash
-			top = muted.Render("┌" + strings.Repeat("─", leftDash) + histLabel + strings.Repeat("─", rightDash) + "┐")
-		} else {
-			top = muted.Render("┌" + strings.Repeat("─", chartW) + "┐")
+		var (
+			histData  []float64
+			histLabel string
+			histColor lipgloss.Color
+		)
+		switch m.chartMode {
+		case modeUtil:
+			histData = m.histUtil
+			histLabel = " UTIL "
+			histColor = lipgloss.Color(cfg.ChartColors["util"])
+		case modeTemp:
+			histData = m.histTemp
+			histLabel = " TEMP "
+			histColor = lipgloss.Color(cfg.ChartColors["temp"])
+		case modePower:
+			histData = m.histPower
+			histLabel = " POWER "
+			histColor = lipgloss.Color(cfg.ChartColors["power"])
+		case modeVRAM:
+			histData = m.histVRAM
+			histLabel = " VRAM "
+			histColor = lipgloss.Color(cfg.ChartColors["vram"])
 		}
-		bot := muted.Render("└" + strings.Repeat("─", chartW) + "┘")
 
-		var framed strings.Builder
-		framed.WriteString(top + "\n")
-		for _, line := range chartLines {
-			framed.WriteString(muted.Render("│"))
-			framed.WriteString(accent.Render(line))
-			framed.WriteString(muted.Render("│"))
-			framed.WriteString("\n")
+		maxW := min(m.w-10, 80)
+		availH := m.h - 14
+		availH = max(availH, 4)
+
+		chartW := maxW
+		chartH := chartW * 3 / 8
+		chartH = max(chartH, 3)
+		if chartH > availH {
+			chartH = availH
+			chartW = chartH * 8 / 3
 		}
-		framed.WriteString(bot)
 
-		b.WriteString("\n")
-		b.WriteString(framed.String())
-		b.WriteString("\n")
-	}
+		chartData := histData
+		if len(chartData) < 3 {
+			chartData = make([]float64, chartW)
+		}
+
+		chart := miniChart(chartData, chartW, chartH, 100)
+		if chart != "" {
+			muted := lipgloss.NewStyle().Foreground(colMuted)
+			accent := lipgloss.NewStyle().Foreground(histColor)
+
+			chartLines := strings.Split(chart, "\n")
+
+			var top string
+			if chartW > len(histLabel) {
+				totalDash := chartW - len(histLabel)
+				leftDash := totalDash / 2
+				rightDash := totalDash - leftDash
+				top = muted.Render("┌" + strings.Repeat("─", leftDash) + histLabel + strings.Repeat("─", rightDash) + "┐")
+			} else {
+				top = muted.Render("┌" + strings.Repeat("─", chartW) + "┐")
+			}
+			bot := muted.Render("└" + strings.Repeat("─", chartW) + "┘")
+
+			var framed strings.Builder
+			framed.WriteString(top + "\n")
+			for _, line := range chartLines {
+				framed.WriteString(muted.Render("│"))
+				framed.WriteString(accent.Render(line))
+				framed.WriteString(muted.Render("│"))
+				framed.WriteString("\n")
+			}
+			framed.WriteString(bot)
+
+			b.WriteString("\n")
+			b.WriteString(framed.String())
+			b.WriteString("\n")
+		}
 	}
 
 	if m.err != nil {
@@ -576,19 +607,90 @@ func (m model) View() string {
 		strings.Repeat("\n", padTop) + content)
 }
 
-// ---------------------------------------------------------------------------
-// main
-// ---------------------------------------------------------------------------
-
 func main() {
+	flagServer := flag.Bool("s", false, "run as server")
+	flagClient := flag.Bool("c", false, "run as client")
+	flagPort := flag.Int("p", 0, "port (server or client)")
+	flagIP := flag.String("i", "", "server IP address (client mode)")
+	flagHelp := flag.Bool("h", false, "show this help")
+	flag.BoolVar(flagHelp, "help", false, "show this help")
+	flag.Parse()
+
+	if *flagHelp {
+		fmt.Print(`
+amdtop — AMD GPU monitor
+
+Usage:
+  amdtop                       local TUI mode
+  amdtop -s -p <port>          server mode (TUI + HTTP API)
+  amdtop -c -i <ip> -p <port>  client mode (remote TUI)
+  amdtop -h, --help            show this help
+
+The first time -s or -c is used, the connection details are saved
+to ~/.config/amdtop/config.json. Subsequent runs can omit -p/-i
+to reuse the saved settings.
+`)
+		return
+	}
+
 	cfg = loadConfig()
+
+	if *flagServer {
+		port := *flagPort
+		if port == 0 {
+			if cfg.Server != nil && cfg.Server.Port > 0 {
+				port = cfg.Server.Port
+			} else {
+				fmt.Fprintln(os.Stderr, "error: no port specified. Use -p <port> or configure it first.")
+				os.Exit(1)
+			}
+		}
+		if cfg.Server == nil || cfg.Server.Port != port {
+			cfg.Server = &ServerCfg{Port: port}
+			saveConfig(cfg)
+		}
+		currentRunMode = modeServer
+		modeLabel = "[SERVER]"
+		modeExtra = "[SERVER]"
+		startServer(port)
+	} else if *flagClient {
+		port := *flagPort
+		ip := *flagIP
+
+		if ip == "" {
+			if cfg.Client != nil && cfg.Client.IP != "" {
+				ip = cfg.Client.IP
+			} else {
+				fmt.Fprintln(os.Stderr, "error: no server IP specified. Use -i <ip> or configure it first.")
+				os.Exit(1)
+			}
+		}
+		if port == 0 {
+			if cfg.Client != nil && cfg.Client.Port > 0 {
+				port = cfg.Client.Port
+			} else {
+				fmt.Fprintln(os.Stderr, "error: no port specified. Use -p <port> or configure it first.")
+				os.Exit(1)
+			}
+		}
+		if cfg.Client == nil || cfg.Client.IP != ip || cfg.Client.Port != port {
+			cfg.Client = &ClientCfg{IP: ip, Port: port}
+			saveConfig(cfg)
+		}
+		currentRunMode = modeClient
+		modeLabel = "[CLIENT]"
+		modeExtra = "[CLIENT]"
+	}
+
 	initStyles(cfg)
 
-	if err := initGPU(); err != nil {
-		fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
-		os.Exit(1)
+	if currentRunMode != modeClient {
+		if err := initGPU(); err != nil {
+			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer closeGPU()
 	}
-	defer closeGPU()
 
 	p := tea.NewProgram(newModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
