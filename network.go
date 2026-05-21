@@ -23,7 +23,8 @@ func startServer(port int) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(currentMetrics)
 	})
-	go http.ListenAndServe(":"+strconv.Itoa(port), nil)
+	addr := "0.0.0.0:" + strconv.Itoa(port)
+	go http.ListenAndServe(addr, nil)
 }
 
 func fetchMetrics(ip string, port int) (*GPUData, error) {
