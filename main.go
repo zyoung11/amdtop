@@ -150,6 +150,9 @@ type model struct {
 	histVRAM  []float64
 	last      time.Time
 	w, h      int
+
+	compact   bool // terminal too short for full layout
+	showGauge bool // compact mode: true = gauges only, false = chart only
 }
 
 func newModel() model {
@@ -204,11 +207,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "tab":
-			m.chartMode = (m.chartMode + 1) % 4
+			if m.compact {
+				if m.showGauge {
+					m.showGauge = false
+					m.chartMode = modeUtil
+				} else {
+					m.chartMode = (m.chartMode + 1) % 4
+					if m.chartMode == modeUtil {
+						m.showGauge = true
+					}
+				}
+			} else {
+				m.chartMode = (m.chartMode + 1) % 4
+			}
 		}
 
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+
+		// estimate full-layout height; switch to compact if too short
+		estChartH := max(min(m.w-10, 80)*3/8, 3)
+		estFull := 3 + 8 + 1 + (estChartH + 2) + 2 + 2 // ≈ 18 + estChartH
+		if m.h < estFull && !m.compact {
+			m.compact = true
+			m.showGauge = true
+		} else if m.h >= estFull && m.compact {
+			m.compact = false
+		}
 
 	case animTick:
 		m.pUtil, m.vUtil = m.spUtil.Update(m.pUtil, m.vUtil, m.tUtil)
@@ -439,24 +464,27 @@ func (m model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	renderRow("GPU", m.pUtil, fmt.Sprintf("%.0f%%", m.pUtil), gaugeColor("gpu", m.pUtil))
-	renderRow("TEMP", m.pTemp, fmt.Sprintf("%.0f°C", m.pTemp), gaugeColor("temp", m.pTemp))
+	if !m.compact || m.showGauge {
+		renderRow("GPU", m.pUtil, fmt.Sprintf("%.0f%%", m.pUtil), gaugeColor("gpu", m.pUtil))
+		renderRow("TEMP", m.pTemp, fmt.Sprintf("%.0f°C", m.pTemp), gaugeColor("temp", m.pTemp))
 
-	pw := fmt.Sprintf("%.0fW", m.pPower)
-	powerPct := m.pPower
-	if m.data != nil && m.data.PowerCap > 0 {
-		pw = fmt.Sprintf("%.0f / %.0fW", m.pPower, m.data.PowerCap)
-		powerPct = m.pPower / m.data.PowerCap * 100
+		pw := fmt.Sprintf("%.0fW", m.pPower)
+		powerPct := m.pPower
+		if m.data != nil && m.data.PowerCap > 0 {
+			pw = fmt.Sprintf("%.0f / %.0fW", m.pPower, m.data.PowerCap)
+			powerPct = m.pPower / m.data.PowerCap * 100
+		}
+		renderRow("POWER", powerPct, pw, gaugeColor("power", powerPct))
+
+		vramDisplay := fmt.Sprintf("%.0f%%", m.pVRAM)
+		if m.data != nil {
+			vramDisplay = fmt.Sprintf("%s / %s",
+				fmtBytes(m.data.VRAMUsed), fmtBytes(m.data.VRAMTotal))
+		}
+		renderRow("VRAM", m.pVRAM, vramDisplay, gaugeColor("vram", m.pVRAM))
 	}
-	renderRow("POWER", powerPct, pw, gaugeColor("power", powerPct))
 
-	vramDisplay := fmt.Sprintf("%.0f%%", m.pVRAM)
-	if m.data != nil {
-		vramDisplay = fmt.Sprintf("%s / %s",
-			fmtBytes(m.data.VRAMUsed), fmtBytes(m.data.VRAMTotal))
-	}
-	renderRow("VRAM", m.pVRAM, vramDisplay, gaugeColor("vram", m.pVRAM))
-
+	if !m.compact || !m.showGauge {
 	var (
 		histData  []float64
 		histLabel string
@@ -529,6 +557,7 @@ func (m model) View() string {
 		b.WriteString("\n")
 		b.WriteString(framed.String())
 		b.WriteString("\n")
+	}
 	}
 
 	if m.err != nil {
