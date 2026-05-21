@@ -15,24 +15,39 @@ AMD GPU 终端监控工具，支持 Linux 和 Windows。
 - Server / Client 模式，通过 HTTP API 远程监控
 - 所有颜色可通过配置文件自定义
 
-## 安装
+## 下载
 
-```bash
-git clone https://github.com/zyoung11/amdtop.git
-cd amdtop
-```
+预编译二进制文件可从 [Releases 页面](https://github.com/zyoung11/amdtop/releases) 下载。
 
 ### Linux
 
+下载 `amdtop-linux-amd64`，添加执行权限后直接运行：
+
 ```bash
-go build -ldflags="-s -w" .
+chmod +x amdtop-linux-amd64
+./amdtop-linux-amd64
 ```
 
 无需额外依赖，直接从 sysfs 读取 amdgpu 驱动数据。
 
 ### Windows
 
-需要 [MinGW-w64](https://www.mingw-w64.org/) 编译 cgo，以及 AMD 显卡驱动（提供 `ADLX.dll`）。
+下载 `amdtop-windows-amd64.exe` 直接运行。需要 AMD 显卡驱动（提供 `ADLX.dll`，位于 `C:\Windows\System32\`）。
+
+### 从源码编译
+
+```bash
+git clone https://github.com/zyoung11/amdtop.git
+cd amdtop
+```
+
+**Linux：**
+
+```bash
+go build -ldflags="-s -w" .
+```
+
+**Windows**（需要 [MinGW-w64](https://www.mingw-w64.org/) 编译 cgo）：
 
 ```powershell
 go build -ldflags="-s -w" .
