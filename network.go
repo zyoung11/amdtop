@@ -2,8 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os/exec"
+	"runtime"
 	"strconv"
+	"strings"
+	"time"
 )
 
 type metricsJSON struct {
@@ -25,6 +30,38 @@ func startServer(port int) {
 	})
 	addr := "0.0.0.0:" + strconv.Itoa(port)
 	go http.ListenAndServe(addr, nil)
+}
+
+func checkConnect(ip string, port int) error {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + ip + ":" + strconv.Itoa(port) + "/api/v1/metrics")
+	if err != nil {
+		return fmt.Errorf("cannot connect to %s:%d: %v", ip, port, err)
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func checkPortReserved(port int) error {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	out, err := exec.Command("powershell", "-NoProfile", "-Command",
+		"netsh int ipv4 show excludedportrange tcp").Output()
+	if err != nil {
+		return nil
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 {
+			start, e1 := strconv.Atoi(f[0])
+			end, e2 := strconv.Atoi(f[1])
+			if e1 == nil && e2 == nil && port >= start && port <= end {
+				return fmt.Errorf("port %d falls in Windows reserved range %d-%d (run 'netsh int ipv4 show excludedportrange tcp' as admin to view all)", port, start, end)
+			}
+		}
+	}
+	return nil
 }
 
 func fetchMetrics(ip string, port int) (*GPUData, error) {

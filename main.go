@@ -677,6 +677,16 @@ to reuse the saved settings.
 			cfg.Client = &ClientCfg{IP: ip, Port: port}
 			saveConfig(cfg)
 		}
+
+		if err := checkPortReserved(port); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := checkConnect(ip, port); err != nil {
+			fmt.Fprintf(os.Stderr, "connection check failed: %v\n", err)
+			os.Exit(1)
+		}
+
 		currentRunMode = modeClient
 		modeLabel = "[CLIENT]"
 		modeExtra = "[CLIENT]"
