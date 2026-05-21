@@ -72,14 +72,16 @@ type ClientCfg struct {
 }
 
 type Config struct {
-	TitleColor   string            `json:"title_color"`
-	GaugeColors  map[string]string `json:"gauges"`
-	ChartColors  map[string]string `json:"charts"`
-	DefaultChart string            `json:"default_chart"`
-	ServerColor  string            `json:"server_color"`
-	ClientColor  string            `json:"client_color"`
-	Server       *ServerCfg        `json:"server,omitempty"`
-	Client       *ClientCfg        `json:"client,omitempty"`
+	TitleColor          string            `json:"title_color"`
+	GaugeColors         map[string]string `json:"gauges"`
+	ChartColors         map[string]string `json:"charts"`
+	DefaultChart        string            `json:"default_chart"`
+	ServerColor         string            `json:"server_color"`
+	ClientColor         string            `json:"client_color"`
+	PollIntervalMs      int               `json:"poll_interval_ms"`
+	ClientPollIntervalMs int              `json:"client_poll_interval_ms"`
+	Server              *ServerCfg        `json:"server,omitempty"`
+	Client              *ClientCfg        `json:"client,omitempty"`
 }
 
 func defaultConfig() *Config {
@@ -97,9 +99,11 @@ func defaultConfig() *Config {
 			"power": "#e65100",
 			"vram":  "#e65100",
 		},
-		DefaultChart: "util",
-		ServerColor:  "#4aa84a",
-		ClientColor:  "#58a6ff",
+		DefaultChart:         "util",
+		ServerColor:          "#4aa84a",
+		ClientColor:          "#58a6ff",
+		PollIntervalMs:       1000,
+		ClientPollIntervalMs: 1000,
 	}
 }
 
@@ -140,9 +144,8 @@ func saveConfig(c *Config) {
 }
 
 const (
-	animFPS      = 60
-	dataInterval = time.Second
-	historyLen   = 120
+	animFPS    = 60
+	historyLen = 120
 )
 
 type (
@@ -211,7 +214,14 @@ func (m model) tickAnim() tea.Cmd {
 }
 
 func (m model) tickData() tea.Cmd {
-	return tea.Tick(dataInterval, func(t time.Time) tea.Msg { return dataTick(t) })
+	ms := cfg.PollIntervalMs
+	if currentRunMode == modeClient {
+		ms = cfg.ClientPollIntervalMs
+	}
+	if ms < 100 {
+		ms = 100
+	}
+	return tea.Tick(time.Duration(ms)*time.Millisecond, func(t time.Time) tea.Msg { return dataTick(t) })
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
