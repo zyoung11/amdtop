@@ -43,6 +43,7 @@ go build -ldflags="-s -w" .
 ```
 amdtop                        本地 TUI 模式
 amdtop -s -p <端口>            服务端模式（TUI + HTTP API）
+amdtop -s -n -p <端口>         无头服务端模式（无 TUI，适用于服务管理）
 amdtop -c -i <IP> -p <端口>    客户端模式（连接远程服务端）
 amdtop -h, --help             显示帮助
 ```
@@ -66,6 +67,17 @@ amdtop -h, --help             显示帮助
 端口会在首次使用后保存到配置文件，之后可省略 `-p`。
 
 API 地址：`GET /api/v1/metrics` 返回包含所有 GPU 指标的 JSON。
+
+### 无头服务端模式
+
+仅启动 HTTP API，不启动 TUI 界面，适合注册为系统服务使用。
+
+```bash
+./amdtop -s -n -p 16969
+```
+
+服务在后台轮询 GPU 数据并通过 HTTP API 提供。
+可用于 `nssm`（Windows）或 `systemd`（Linux）等服务管理器。
 
 ### 客户端模式
 

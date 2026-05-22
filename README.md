@@ -43,6 +43,7 @@ go build -ldflags="-s -w" .
 ```
 amdtop                         local TUI mode
 amdtop -s -p <port>            server mode (TUI + HTTP API on port)
+amdtop -s -n -p <port>         headless server mode (no TUI, for services)
 amdtop -c -i <ip> -p <port>    client mode (connect to remote server)
 amdtop -h, --help              show help
 ```
@@ -66,6 +67,17 @@ Starts the TUI and a HTTP API on the specified port.
 The port is saved to the config file after first use; subsequent runs may omit `-p`.
 
 API endpoint: `GET /api/v1/metrics` returns a JSON object with all GPU metrics.
+
+### Headless server mode
+
+Starts the HTTP API without the TUI, suitable for running as a system service.
+
+```bash
+./amdtop -s -n -p 16969
+```
+
+The server polls GPU data in the background and serves it via the HTTP API.
+Use with service managers like `nssm` on Windows or `systemd` on Linux.
 
 ### Client mode
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
@@ -622,6 +623,7 @@ func main() {
 	flagClient := flag.Bool("c", false, "run as client")
 	flagPort := flag.Int("p", 0, "port (server or client)")
 	flagIP := flag.String("i", "", "server IP address (client mode)")
+	flagNoTUI := flag.Bool("n", false, "no TUI (headless server mode, for nssm)")
 	flagHelp := flag.Bool("h", false, "show this help")
 	flag.BoolVar(flagHelp, "help", false, "show this help")
 	flag.Parse()
@@ -633,8 +635,17 @@ amdtop — AMD GPU monitor
 Usage:
   amdtop                       local TUI mode
   amdtop -s -p <port>          server mode (TUI + HTTP API)
+  amdtop -s -n -p <port>       headless server mode (no TUI, for services)
   amdtop -c -i <ip> -p <port>  client mode (remote TUI)
   amdtop -h, --help            show this help
+
+Flags:
+  -s            run as server
+  -c            run as client
+  -p <port>     port (server or client)
+  -i <ip>       server IP address (client mode)
+  -n            no TUI (headless server, no interactive interface)
+  -h, --help    show this help
 
 The first time -s or -c is used, the connection details are saved
 to ~/.config/amdtop/config.json. Subsequent runs can omit -p/-i
@@ -710,6 +721,38 @@ to reuse the saved settings.
 			os.Exit(1)
 		}
 		defer closeGPU()
+	}
+
+	if *flagServer && *flagNoTUI {
+		fmt.Printf("headless server started on port %d\n", cfg.Server.Port)
+
+		interval := max(time.Duration(cfg.PollIntervalMs)*time.Millisecond, 100*time.Millisecond)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt)
+
+		for {
+			select {
+			case <-ticker.C:
+				d, err := collectGPUData()
+				if err == nil {
+					currentMetrics = metricsJSON{
+						Name:        d.Name,
+						Utilization: d.Utilization,
+						Temperature: d.Temperature,
+						Power:       d.Power,
+						PowerCap:    d.PowerCap,
+						VRAMUsed:    d.VRAMUsed,
+						VRAMTotal:   d.VRAMTotal,
+					}
+				}
+			case <-sigCh:
+				fmt.Println("shutting down...")
+				return
+			}
+		}
 	}
 
 	p := tea.NewProgram(newModel(), tea.WithAltScreen())
