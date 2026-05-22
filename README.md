@@ -15,24 +15,39 @@ AMD GPU monitor for Linux and Windows with a terminal UI.
 - Server / Client mode for remote monitoring via HTTP API
 - Fully customizable colours via config file
 
-## Installation
+## Download
 
-```bash
-git clone https://github.com/zyoung11/amdtop.git
-cd amdtop
-```
+Pre-built binaries are available on the [Releases page](https://github.com/zyoung11/amdtop/releases).
 
 ### Linux
 
+Download `amdtop-linux-amd64`, make it executable:
+
 ```bash
-go build -ldflags="-s -w" .
+chmod +x amdtop-linux-amd64
+./amdtop-linux-amd64
 ```
 
 No extra dependencies — reads GPU data from sysfs (amdgpu kernel driver).
 
 ### Windows
 
-Requires [MinGW-w64](https://www.mingw-w64.org/) for cgo, and AMD GPU driver with `ADLX.dll` (included with driver).
+Download `amdtop-windows-amd64.exe` and run it. Requires AMD GPU driver with `ADLX.dll` (included with driver, located in `C:\Windows\System32\`).
+
+### Build from source
+
+```bash
+git clone https://github.com/zyoung11/amdtop.git
+cd amdtop
+```
+
+**Linux:**
+
+```bash
+go build -ldflags="-s -w" .
+```
+
+**Windows** (requires [MinGW-w64](https://www.mingw-w64.org/) for cgo):
 
 ```powershell
 go build -ldflags="-s -w" .
