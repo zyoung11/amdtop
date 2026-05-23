@@ -73,16 +73,16 @@ type ClientCfg struct {
 }
 
 type Config struct {
-	TitleColor          string            `json:"title_color"`
-	GaugeColors         map[string]string `json:"gauges"`
-	ChartColors         map[string]string `json:"charts"`
-	DefaultChart        string            `json:"default_chart"`
-	ServerColor         string            `json:"server_color"`
-	ClientColor         string            `json:"client_color"`
-	PollIntervalMs      int               `json:"poll_interval_ms"`
-	ClientPollIntervalMs int              `json:"client_poll_interval_ms"`
-	Server              *ServerCfg        `json:"server,omitempty"`
-	Client              *ClientCfg        `json:"client,omitempty"`
+	TitleColor           string            `json:"title_color"`
+	GaugeColors          map[string]string `json:"gauges"`
+	ChartColors          map[string]string `json:"charts"`
+	DefaultChart         string            `json:"default_chart"`
+	ServerColor          string            `json:"server_color"`
+	ClientColor          string            `json:"client_color"`
+	PollIntervalMs       int               `json:"poll_interval_ms"`
+	ClientPollIntervalMs int               `json:"client_poll_interval_ms"`
+	Server               *ServerCfg        `json:"server,omitempty"`
+	Client               *ClientCfg        `json:"client,omitempty"`
 }
 
 func defaultConfig() *Config {
@@ -253,13 +253,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.w, m.h = msg.Width, msg.Height
 
 		estChartH := max(min(m.w-10, 80)*3/8, 3)
-		estFull := 3 + 8 + 1 + (estChartH + 2) + 2 + 2
-		estNoHelp := estFull - 3
+		maxChartH := max(m.h-16, 3)
+		chartH := min(estChartH, maxChartH)
+		baseH := 16 + chartH
 		switch {
-		case m.h >= estFull:
+		case baseH+3 <= m.h:
 			m.compact = false
 			m.hideHelp = false
-		case m.h >= estNoHelp:
+		case baseH <= m.h:
 			m.compact = false
 			m.hideHelp = true
 		default:
@@ -562,15 +563,11 @@ func (m model) View() string {
 		}
 
 		maxW := min(m.w-10, 80)
-		availH := m.h - 14
-		availH = max(availH, 4)
-
 		chartW := maxW
 		chartH := chartW * 3 / 8
 		chartH = max(chartH, 3)
-		if chartH > availH {
-			chartH = availH
-			chartW = chartH * 8 / 3
+		if !m.compact {
+			chartH = min(chartH, max(m.h-16, 3))
 		}
 
 		chartData := histData
@@ -624,10 +621,12 @@ func (m model) View() string {
 	}
 
 	content := b.String()
-	contentH := strings.Count(content, "\n")
-	padTop := max((m.h-contentH)/2, 0)
-	return lipgloss.NewStyle().Width(m.w).Align(lipgloss.Center).Render(
-		strings.Repeat("\n", padTop) + content)
+	lines := strings.Split(content, "\n")
+	if len(lines) < m.h {
+		padTop := (m.h - len(lines)) / 2
+		content = strings.Repeat("\n", padTop) + content
+	}
+	return lipgloss.NewStyle().Width(m.w).Align(lipgloss.Center).Render(content)
 }
 
 func main() {
