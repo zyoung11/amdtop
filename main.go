@@ -176,6 +176,7 @@ type model struct {
 
 	compact   bool
 	showGauge bool
+	hideHelp  bool
 }
 
 func newModel() model {
@@ -253,11 +254,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		estChartH := max(min(m.w-10, 80)*3/8, 3)
 		estFull := 3 + 8 + 1 + (estChartH + 2) + 2 + 2
-		if m.h < estFull && !m.compact {
-			m.compact = true
-			m.showGauge = true
-		} else if m.h >= estFull && m.compact {
+		estNoHelp := estFull - 3
+		switch {
+		case m.h >= estFull:
 			m.compact = false
+			m.hideHelp = false
+		case m.h >= estNoHelp:
+			m.compact = false
+			m.hideHelp = true
+		default:
+			if !m.compact {
+				m.compact = true
+				m.showGauge = true
+			}
+			m.hideHelp = true
 		}
 
 	case animTick:
@@ -607,9 +617,11 @@ func (m model) View() string {
 		b.WriteString(sErr.Render(fmt.Sprintf("⚠ %v", m.err)))
 	}
 
-	b.WriteString("\n\n  ")
-	b.WriteString(sHelp.Render("tab switch · q quit"))
-	b.WriteString("\n")
+	if !m.hideHelp {
+		b.WriteString("\n\n  ")
+		b.WriteString(sHelp.Render("tab switch · q quit"))
+		b.WriteString("\n")
+	}
 
 	content := b.String()
 	contentH := strings.Count(content, "\n")
