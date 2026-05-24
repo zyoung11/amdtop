@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -81,6 +82,7 @@ type Config struct {
 	ClientColor          string            `json:"client_color"`
 	PollIntervalMs       int               `json:"poll_interval_ms"`
 	ClientPollIntervalMs int               `json:"client_poll_interval_ms"`
+	PowerCapW            float64           `json:"power_cap_w"`
 	Server               *ServerCfg        `json:"server,omitempty"`
 	Client               *ClientCfg        `json:"client,omitempty"`
 }
@@ -105,6 +107,7 @@ func defaultConfig() *Config {
 		ClientColor:          "#58a6ff",
 		PollIntervalMs:       1000,
 		ClientPollIntervalMs: 1000,
+		PowerCapW:            0,
 	}
 }
 
@@ -129,6 +132,9 @@ func loadConfig() *Config {
 		}
 		return defaultConfig()
 	}
+
+	// Strip UTF-8 BOM if present
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 
 	var c Config
 	if err := json.Unmarshal(data, &c); err != nil {
@@ -298,6 +304,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tPower = d.Power
 			if d.VRAMTotal > 0 {
 				m.tVRAM = float64(d.VRAMUsed) / float64(d.VRAMTotal) * 100
+			}
+
+			if cfg.PowerCapW > 0 {
+				d.PowerCap = cfg.PowerCapW
 			}
 
 			if currentRunMode == modeServer {
@@ -749,6 +759,9 @@ to reuse the saved settings.
 			case <-ticker.C:
 				d, err := collectGPUData()
 				if err == nil {
+					if cfg.PowerCapW > 0 {
+						d.PowerCap = cfg.PowerCapW
+					}
 					currentMetrics = metricsJSON{
 						Name:        d.Name,
 						Utilization: d.Utilization,

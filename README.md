@@ -141,6 +141,12 @@ Use a hex colour (e.g. `"#e65100"`) to pin it to a fixed colour.
 Four chart types (util, temp, power, vram) each have their own colour.
 All default to `#e65100` (AMD orange).
 
+### Power cap
+
+- `power_cap_w` — manual power cap override in watts (default `0`). Set to `0` to auto-detect from the GPU driver.
+  When set, this value is used for power gauge percentage calculation and chart scaling instead of the driver-reported cap.
+  Useful when the GPU driver doesn't report a power cap (e.g. some APUs).
+
 ### Poll intervals
 
 - `poll_interval_ms` — data collection interval in local / server mode (default `1000`). Minimum `100`.

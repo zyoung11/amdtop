@@ -48,10 +48,16 @@ int adlx_collect(ADLXGPUData* data) {
 	adlx_double val;
 	if (ADLX_SUCCEEDED(metrics->pVtbl->GPUUsage(metrics, &val)))
 		data->gpuUsage = val;
-	if (ADLX_SUCCEEDED(metrics->pVtbl->GPUTemperature(metrics, &val)))
-		data->gpuTemp = val;
-	if (ADLX_SUCCEEDED(metrics->pVtbl->GPUPower(metrics, &val)))
-		data->gpuPower = val;
+
+	/* Hotspot temperature, fall back to edge temperature */
+	if (ADLX_FAILED(metrics->pVtbl->GPUHotspotTemperature(metrics, &val)))
+		metrics->pVtbl->GPUTemperature(metrics, &val);
+	data->gpuTemp = val;
+
+	/* Total board power, fall back to GPU chip power */
+	if (ADLX_FAILED(metrics->pVtbl->GPUTotalBoardPower(metrics, &val)))
+		metrics->pVtbl->GPUPower(metrics, &val);
+	data->gpuPower = val;
 
 	adlx_int vram;
 	if (ADLX_SUCCEEDED(metrics->pVtbl->GPUVRAM(metrics, &vram)))
@@ -62,8 +68,10 @@ int adlx_collect(ADLXGPUData* data) {
 	IADLXGPUMetricsSupport* support = NULL;
 	if (ADLX_SUCCEEDED(perf->pVtbl->GetSupportedGPUMetrics(perf, gpu, &support))) {
 		adlx_int minP = 0, maxP = 0;
-		if (ADLX_SUCCEEDED(support->pVtbl->GetGPUPowerRange(support, &minP, &maxP)))
-			data->gpuPowerCap = (double)maxP;
+		/* Total board power cap, fall back to GPU chip power cap */
+		if (ADLX_FAILED(support->pVtbl->GetGPUTotalBoardPowerRange(support, &minP, &maxP)))
+			support->pVtbl->GetGPUPowerRange(support, &minP, &maxP);
+		data->gpuPowerCap = (double)maxP;
 		support->pVtbl->Release(support);
 	}
 	return 0;
