@@ -312,7 +312,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tVRAM = float64(d.VRAMUsed) / float64(d.VRAMTotal) * 100
 			}
 
-			if cfg.PowerCapW > 0 {
+			// Client uses server's power cap; only override in local/server mode
+			if currentRunMode != modeClient && cfg.PowerCapW > 0 {
 				d.PowerCap = cfg.PowerCapW
 			}
 
