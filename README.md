@@ -127,7 +127,8 @@ The config file is located at `~/.config/amdtop/config.json`. It is automaticall
   "server_color": "#4aa84a",
   "client_color": "#58a6ff",
   "poll_interval_ms": 1000,
-  "client_poll_interval_ms": 1000
+  "client_poll_interval_ms": 1000,
+  "power_cap_w": 0
 }
 ```
 
@@ -146,6 +147,20 @@ All default to `#e65100` (AMD orange).
 - `power_cap_w` — manual power cap override in watts (default `0`). Set to `0` to auto-detect from the GPU driver.
   When set, this value is used for power gauge percentage calculation and chart scaling instead of the driver-reported cap.
   Useful when the GPU driver doesn't report a power cap (e.g. some APUs).
+
+### Embedded config
+
+When running as a system service (e.g. nssm on Windows as `LocalSystem`), the config file
+`~/.config/amdtop/config.json` may not be reachable. In that case, the program falls back to
+the `config.json` embedded in the binary at build time.
+
+To customise the service config, edit `config.json` in the project root and rebuild:
+
+```bash
+go build -ldflags="-s -w" .
+```
+
+The embedded config is then used automatically when the home directory config is unavailable.
 
 ### Poll intervals
 

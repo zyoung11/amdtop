@@ -127,7 +127,8 @@ IP 和端口会在首次使用后保存，之后可省略 `-i` 和/或 `-p`。
   "server_color": "#4aa84a",
   "client_color": "#58a6ff",
   "poll_interval_ms": 1000,
-  "client_poll_interval_ms": 1000
+  "client_poll_interval_ms": 1000,
+  "power_cap_w": 0
 }
 ```
 
@@ -145,6 +146,20 @@ IP 和端口会在首次使用后保存，之后可省略 `-i` 和/或 `-p`。
 - `power_cap_w` — 手动设置功耗上限（瓦特），默认 `0` 表示自动从驱动检测。
   设置为大于 0 的值时，功率进度条的百分比和图表缩放将使用此值替换驱动检测到的上限。
   适用于驱动不报告功耗上限的情况（如部分 APU）。
+
+### 内嵌配置文件
+
+当以系统服务运行时（如 Windows nssm 的 `LocalSystem` 账户），
+可能访问不到用户目录下的 `~/.config/amdtop/config.json`。
+此时程序会回退到编译时内嵌到二进制中的 `config.json`。
+
+如需自定义服务配置，编辑项目根目录的 `config.json` 后重新编译即可：
+
+```bash
+go build -ldflags="-s -w" .
+```
+
+当用户目录的配置文件不可用时，会自动使用内嵌配置。
 
 ### 轮询间隔
 

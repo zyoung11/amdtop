@@ -1,0 +1,24 @@
+{
+  "title_color": "#e65100",
+  "gauges": {
+    "gpu": "default",
+    "power": "default",
+    "temp": "default",
+    "vram": "default"
+  },
+  "charts": {
+    "power": "#e65100",
+    "temp": "#e65100",
+    "util": "#e65100",
+    "vram": "#e65100"
+  },
+  "default_chart": "util",
+  "server_color": "#4aa84a",
+  "client_color": "#58a6ff",
+  "poll_interval_ms": 1000,
+  "client_poll_interval_ms": 1000,
+  "power_cap_w": 120,
+  "server": {
+    "port": 16969
+  }
+}

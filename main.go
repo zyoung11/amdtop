@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
 )
+
+//go:embed config.json
+var embeddedConfig []byte
 
 type GPUData struct {
 	Name        string
@@ -117,30 +121,32 @@ var (
 )
 
 func loadConfig() *Config {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return defaultConfig()
-	}
-	cfgPath = filepath.Join(home, ".config", "amdtop", "config.json")
-
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			def := defaultConfig()
-			saveConfig(def)
-			return def
+	// Try user config from home directory
+	home, homeErr := os.UserHomeDir()
+	if homeErr == nil {
+		cfgPath = filepath.Join(home, ".config", "amdtop", "config.json")
+		data, err := os.ReadFile(cfgPath)
+		if err == nil {
+			data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+			var c Config
+			if err := json.Unmarshal(data, &c); err == nil {
+				return &c
+			}
 		}
-		return defaultConfig()
 	}
 
-	// Strip UTF-8 BOM if present
-	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
-
+	// Fall back to embedded config (for service / headless environments)
+	data := bytes.TrimPrefix(embeddedConfig, []byte{0xEF, 0xBB, 0xBF})
 	var c Config
-	if err := json.Unmarshal(data, &c); err != nil {
-		return defaultConfig()
+	if err := json.Unmarshal(data, &c); err == nil {
+		if homeErr == nil {
+			cfgPath = filepath.Join(home, ".config", "amdtop", "config.json")
+			saveConfig(&c)
+		}
+		return &c
 	}
-	return &c
+
+	return defaultConfig()
 }
 
 func saveConfig(c *Config) {
