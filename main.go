@@ -534,7 +534,7 @@ func (m model) View() string {
 		pw := fmt.Sprintf("%.0fW", m.pPower)
 		powerPct := m.pPower
 		if m.data != nil && m.data.PowerCap > 0 {
-			pw = fmt.Sprintf("%.0f / %.0fW", m.pPower, m.data.PowerCap)
+			pw = fmt.Sprintf("%.0fW / %.0fW", m.pPower, m.data.PowerCap)
 			powerPct = m.pPower / m.data.PowerCap * 100
 		}
 		renderRow("POWER", powerPct, pw, gaugeColor("power", powerPct))
