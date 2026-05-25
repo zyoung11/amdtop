@@ -364,13 +364,13 @@ var (
 	colBarOff  lipgloss.Color
 	colAccent  lipgloss.Color
 	colRed     lipgloss.Color
-	sTitle   lipgloss.Style
-	sSub     lipgloss.Style
-	sLabel   lipgloss.Style
-	sValue   lipgloss.Style
-	sHelp    lipgloss.Style
-	sErr     lipgloss.Style
-	sModeTag lipgloss.Style
+	sTitle     lipgloss.Style
+	sSub       lipgloss.Style
+	sLabel     lipgloss.Style
+	sValue     lipgloss.Style
+	sHelp      lipgloss.Style
+	sErr       lipgloss.Style
+	sModeTag   lipgloss.Style
 )
 
 func initStyles(c *Config) {
