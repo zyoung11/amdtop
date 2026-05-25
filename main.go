@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/harmonica"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 //go:embed config.json
@@ -362,10 +363,7 @@ var (
 	colMuted   lipgloss.Color
 	colBarOff  lipgloss.Color
 	colAccent  lipgloss.Color
-	colGreen   lipgloss.Color
-	colYellow  lipgloss.Color
 	colRed     lipgloss.Color
-
 	sTitle   lipgloss.Style
 	sSub     lipgloss.Style
 	sLabel   lipgloss.Style
@@ -383,8 +381,6 @@ func initStyles(c *Config) {
 	colMuted = "#7d8590"
 	colBarOff = "#21262d"
 	colAccent = "#e65100"
-	colGreen = "#4aa84a"
-	colYellow = "#ad893d"
 	colRed = "#c06868"
 
 	titleColor := lipgloss.Color(c.TitleColor)
@@ -398,22 +394,41 @@ func initStyles(c *Config) {
 	sModeTag = lipgloss.NewStyle().Foreground(colMuted).Bold(true)
 }
 
-func barColor(pct float64) lipgloss.Color {
-	switch {
-	case pct < 50:
-		return colGreen
-	case pct < 80:
-		return colYellow
-	default:
-		return colRed
-	}
-}
-
 func renderBar(pct float64, w int, color lipgloss.Color) string {
 	pct = math.Max(0, math.Min(100, pct))
 	f := int(math.Round(pct / 100 * float64(w)))
 	return lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", f)) +
 		lipgloss.NewStyle().Foreground(colBarOff).Render(strings.Repeat("░", w-f))
+}
+
+func renderGradientBar(pct float64, w int, empty lipgloss.Color) string {
+	pct = math.Max(0, math.Min(100, pct))
+	f := int(math.Round(pct / 100 * float64(w)))
+
+	green, _ := colorful.Hex("#4aa84a")
+	yellow, _ := colorful.Hex("#ad893d")
+	red, _ := colorful.Hex("#c06868")
+
+	var sb strings.Builder
+	for i := range w {
+		if i < f {
+			t := float64(i) / float64(max(w-1, 1))
+			var c colorful.Color
+			if t < 0.5 {
+				c = green.BlendLuv(yellow, t/0.5)
+			} else {
+				c = yellow.BlendLuv(red, (t-0.5)/0.5)
+			}
+			sb.WriteString(
+				lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Render("█"),
+			)
+		} else {
+			sb.WriteString(
+				lipgloss.NewStyle().Foreground(empty).Render("░"),
+			)
+		}
+	}
+	return sb.String()
 }
 
 func fmtBytes(b uint64) string {
@@ -518,25 +533,23 @@ func (m model) View() string {
 
 	valStyle := lipgloss.NewStyle().Bold(true).Foreground(colText).Width(16)
 
-	gaugeColor := func(key string, pct float64) lipgloss.Color {
-		if cfg.GaugeColors[key] == "default" {
-			return barColor(pct)
-		}
-		return lipgloss.Color(cfg.GaugeColors[key])
-	}
-
-	renderRow := func(label string, barVal float64, display string, color lipgloss.Color) {
+	renderRow := func(label string, barVal float64, display string, key string) {
 		b.WriteString(sLabel.Render(label))
 		b.WriteString("  ")
-		b.WriteString(renderBar(barVal, barW, color))
+		color := cfg.GaugeColors[key]
+		if color == "default" {
+			b.WriteString(renderGradientBar(barVal, barW, colBarOff))
+		} else {
+			b.WriteString(renderBar(barVal, barW, lipgloss.Color(color)))
+		}
 		b.WriteString("  ")
 		b.WriteString(valStyle.Render(display))
 		b.WriteString("\n\n")
 	}
 
 	if !m.compact || m.showGauge {
-		renderRow("GPU", m.pUtil, fmt.Sprintf("%.0f%%", m.pUtil), gaugeColor("gpu", m.pUtil))
-		renderRow("TEMP", m.pTemp, fmt.Sprintf("%.0f°C", m.pTemp), gaugeColor("temp", m.pTemp))
+		renderRow("GPU", m.pUtil, fmt.Sprintf("%.0f%%", m.pUtil), "gpu")
+		renderRow("TEMP", m.pTemp, fmt.Sprintf("%.0f°C", m.pTemp), "temp")
 
 		pw := fmt.Sprintf("%.0fW", m.pPower)
 		powerPct := m.pPower
@@ -544,14 +557,14 @@ func (m model) View() string {
 			pw = fmt.Sprintf("%.0fW / %.0fW", m.pPower, m.data.PowerCap)
 			powerPct = m.pPower / m.data.PowerCap * 100
 		}
-		renderRow("POWER", powerPct, pw, gaugeColor("power", powerPct))
+		renderRow("POWER", powerPct, pw, "power")
 
 		vramDisplay := fmt.Sprintf("%.0f%%", m.pVRAM)
 		if m.data != nil {
 			vramDisplay = fmt.Sprintf("%s / %s",
 				fmtBytes(m.data.VRAMUsed), fmtBytes(m.data.VRAMTotal))
 		}
-		renderRow("VRAM", m.pVRAM, vramDisplay, gaugeColor("vram", m.pVRAM))
+		renderRow("VRAM", m.pVRAM, vramDisplay, "vram")
 	}
 
 	if !m.compact || !m.showGauge {
@@ -611,7 +624,8 @@ func (m model) View() string {
 			bot := muted.Render("└" + strings.Repeat("─", chartW) + "┘")
 
 			var framed strings.Builder
-			framed.WriteString(top + "\n")
+			framed.WriteString(top)
+			framed.WriteString("\n")
 			for _, line := range chartLines {
 				framed.WriteString(muted.Render("│"))
 				framed.WriteString(accent.Render(line))
